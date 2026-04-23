@@ -19,7 +19,7 @@
   "peerDependencies": {
     "@material-ui/core": "^4.12.3",
     "@material-ui/icons": "^4.11.2",
-    "@modelcontextprotocol/sdk": "1.12.1",
+    "@modelcontextprotocol/sdk": "1.29.0",
     "@radix-ui/react-tabs": "^1.1.1",
     "ajv": "^6.12.6",
     "notistack": "^1.0.10",
