@@ -80,6 +80,11 @@ export function useConnection({
     });
   }
 
+  const isSessionExpiredError = (errorMessage: string): boolean => {
+    const msg = (errorMessage || '').toLowerCase();
+    return msg.includes('400') || (msg.includes('session') && msg.includes('bad'));
+  };
+
   const makeRequest = async <T extends z.ZodType>(
     request: ClientRequest,
     schema: T,
@@ -125,6 +130,25 @@ export function useConnection({
         success: false,
       });
       
+      // Handle session expiry: server restarted so old mcp-session-id is stale (HTTP 400).
+      // Auto-reconnect with a fresh transport (sessionId: undefined) and retry once.
+      if (isSessionExpiredError(errorString)) {
+        addHistoryEvent('warning', 'makeRequest', 'Session expired, reconnecting...', {
+          method: request.method,
+        });
+        try {
+          const newClient = await connect();
+          if (newClient) {
+            const retryOptions: RequestOptions = { timeout: 60000, maxTotalTimeout: 60000 };
+            return await newClient.request(request, schema, retryOptions);
+          }
+        } catch (reconnectError) {
+          addHistoryEvent('error', 'makeRequest', 'Auto-reconnect failed', {
+            error: reconnectError instanceof Error ? reconnectError.message : String(reconnectError),
+          });
+        }
+      }
+
       if (!options?.suppressToast) {
         showError(errorString);
       }
@@ -136,7 +160,7 @@ export function useConnection({
     (error instanceof Error && error.message.includes('401')) ||
     (error instanceof Error && error.message.includes('Unauthorized'));
 
-  const connect = async (_e?: unknown, retryCount: number = 0) => {
+  const connect = async (_e?: unknown, retryCount: number = 0): Promise<Client | undefined> => {
     setConnectionStatus('connecting');
     setConnectionError(null); // Clear previous errors
     clearHistory(); // Clear history on new connection
@@ -239,6 +263,7 @@ export function useConnection({
       addHistoryEvent('info', 'connect', 'MCP connection established successfully', {
         hasCapabilities: !!capabilities,
       });
+      return client;
     } catch (e) {
       console.error(e);
       setConnectionStatus('error');
